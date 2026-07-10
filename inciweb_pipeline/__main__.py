@@ -1,20 +1,23 @@
 """CLI entrypoint: run Inciweb pipeline end-to-end and log to stdout.
 
-    python -m inciweb_pipeline <stream>
-    inciweb-pipeline <stream>
+python -m inciweb_pipeline <stream>
+inciweb-pipeline <stream>
 """
 
 try:
     from prefect import task, flow
 except ImportError:
+
     def task(fn=None, **kwargs):
         if fn is None:
             return lambda f: f
         return fn
+
     def flow(fn=None, **kwargs):
         if fn is None:
             return lambda f: f
         return fn
+
 
 import argparse
 import logging
@@ -69,7 +72,7 @@ def generate_payloads(rows):
 
 
 @flow
-def run_chart_data_ingest():
+def inciweb_chart_data_ingest():
     refresh_pm25()
     rows = get_incident_rows()
     results = generate_payloads(rows)
@@ -78,7 +81,7 @@ def run_chart_data_ingest():
 
 
 REGISTRY = {
-    "chart-data-ingest": run_chart_data_ingest,
+    "inciweb-chart-data-ingest": inciweb_chart_data_ingest,
 }
 
 
@@ -88,7 +91,8 @@ def main(argv=None):
         "stream", choices=sorted(REGISTRY), help="which pipeline to run"
     )
     parser.add_argument(
-        "--log-level", default="INFO",
+        "--log-level",
+        default="INFO",
         help="stdlib logging level (default: INFO)",
     )
     args = parser.parse_args(argv)
