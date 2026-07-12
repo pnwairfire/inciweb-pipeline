@@ -276,9 +276,7 @@ class PayloadGenerator:
                 cat_2 = float(parts[3]) if parts[3] else None
                 cat_3 = float(parts[4]) if parts[4] else None
                 cat_4 = float(parts[5]) if parts[5] else None
-                cat_5 = (
-                    float(parts[6]) if len(parts) > 6 and parts[6] else None
-                )
+                cat_5 = float(parts[6]) if len(parts) > 6 and parts[6] else None
 
                 # Convert timestamp string to Unix timestamp (seconds)
                 dt = datetime.fromisoformat(

@@ -4,8 +4,6 @@ python -m inciweb_pipeline <stream>
 inciweb-pipeline <stream>
 """
 
-
-
 import argparse
 import logging
 import sys

@@ -1,5 +1,5 @@
-"""PostgreSQL connection/engine helpers for the Inciweb pipeline.
-"""
+"""PostgreSQL connection/engine helpers for the Inciweb pipeline."""
+
 import os
 from urllib.parse import quote_plus
 
@@ -24,8 +24,7 @@ def _get_config(env_vars):
         raise ValueError(f"env_vars missing required keys: {missing_keys}.")
 
     missing_env = [
-        v for k, v in env_vars.items()
-        if k in REQUIRED_KEYS and not os.getenv(v)
+        v for k, v in env_vars.items() if k in REQUIRED_KEYS and not os.getenv(v)
     ]
     if missing_env:
         raise ValueError(f"Missing env var(s): {', '.join(missing_env)}")
@@ -42,7 +41,9 @@ def _get_config(env_vars):
 def get_uri(env_vars, sslmode="require"):
     cfg = _get_config(env_vars)
     pw = quote_plus(cfg["password"])
-    uri = f"postgresql://{cfg['user']}:{pw}@{cfg['host']}:{cfg['port']}/{cfg['database']}"
+    uri = (
+        f"postgresql://{cfg['user']}:{pw}@{cfg['host']}:{cfg['port']}/{cfg['database']}"
+    )
     return f"{uri}?sslmode={sslmode}" if sslmode else uri
 
 

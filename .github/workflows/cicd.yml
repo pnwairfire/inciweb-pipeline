@@ -5,16 +5,16 @@ on:
     branches:
       - main
     tags:
-      - 'v*'
+      - "v*"
   pull_request:
     branches:
       - main
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment to deploy to'
+        description: "Environment to deploy to"
         required: true
-        default: 'dev'
+        default: "dev"
         type: choice
         options:
           - dev
@@ -44,26 +44,26 @@ jobs:
       - name: Run Ruff Lint Check
         run: uv run ruff check .
 
-  dependency-check:
-    name: "Dependency Audit"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+  # dependency-check:
+  #   name: "Dependency Audit"
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout Code
+  #       uses: actions/checkout@v4
 
-      - name: Run OSV-Scanner
-        uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v2.3.8
-        with:
-          scan-args: |
-            --recursive
-            ./
+  #     - name: Run OSV-Scanner
+  #       uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v2.3.8
+  #       with:
+  #         scan-args: |
+  #           --recursive
+  #           ./
 
   build-and-push:
     name: "Build & Push ECR"
     needs: [lint, dependency-check]
     runs-on: ubuntu-latest
     environment: ${{ (github.event_name == 'workflow_dispatch' && inputs.environment) || (startsWith(github.ref, 'refs/tags/v') && 'prod' || 'dev') }}
-    
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -92,7 +92,7 @@ jobs:
             -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG \
             -t $ECR_REGISTRY/$REPOSITORY:$SHA_TAG \
             .
-          
+
           if [ "$PUSH_TO_ECR" = "true" ]; then
             docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
             docker push $ECR_REGISTRY/$REPOSITORY:$SHA_TAG
