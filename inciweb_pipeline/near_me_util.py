@@ -17,8 +17,7 @@ NEAR_ME_URL = (
 def fetch_near_me(lat, lon, mile):
     try:
         response = requests.get(
-            NEAR_ME_URL.format(lat=lat, lon=lon, mi=mile),
-            timeout=30
+            NEAR_ME_URL.format(lat=lat, lon=lon, mi=mile), timeout=30
         )
         api_data = response.json()
         return api_data

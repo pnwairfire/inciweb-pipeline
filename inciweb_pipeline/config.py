@@ -1,5 +1,5 @@
-"""Externalized configuration for Inciweb data.
-"""
+"""Externalized configuration for Inciweb data."""
+
 import os
 
 from dotenv import load_dotenv

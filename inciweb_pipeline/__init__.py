@@ -1,2 +1,1 @@
-"""inciweb_pipeline — Prefect-agnostic ETL logic for Inciweb data.
-"""
+"""inciweb_pipeline — Prefect-agnostic ETL logic for Inciweb data."""

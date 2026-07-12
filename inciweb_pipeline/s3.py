@@ -1,5 +1,5 @@
-"""S3 client helpers for the Inciweb pipeline.
-"""
+"""S3 client helpers for the Inciweb pipeline."""
+
 import os
 
 import boto3
