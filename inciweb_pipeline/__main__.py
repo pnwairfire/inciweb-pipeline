@@ -4,19 +4,6 @@ python -m inciweb_pipeline <stream>
 inciweb-pipeline <stream>
 """
 
-try:
-    from prefect import task, flow
-except ImportError:
-
-    def task(fn=None, **kwargs):
-        if fn is None:
-            return lambda f: f
-        return fn
-
-    def flow(fn=None, **kwargs):
-        if fn is None:
-            return lambda f: f
-        return fn
 
 
 import argparse
@@ -30,7 +17,6 @@ from inciweb_pipeline.db import STATEMENT_TIMEOUT, get_airfire_db_conn
 logger = logging.getLogger(__name__)
 
 
-@task
 def refresh_pm25():
     logger.info("BEGIN Refreshing underlying materialized views")
     airfire_conn = get_airfire_db_conn(STATEMENT_TIMEOUT)
@@ -41,7 +27,6 @@ def refresh_pm25():
     logger.info("Completed refresh")
 
 
-@task
 def get_incident_rows() -> list:
     im = IncidentManager()
     im.get_incidents()
@@ -50,7 +35,6 @@ def get_incident_rows() -> list:
     return rows
 
 
-@task
 def generate_payloads(rows):
     results = []
     for row in rows:
@@ -71,13 +55,16 @@ def generate_payloads(rows):
     return results
 
 
-@flow
 def inciweb_chart_data_ingest():
     refresh_pm25()
     rows = get_incident_rows()
     results = generate_payloads(rows)
     successes = sum(1 for r in results if r["status"] == "success")
     return f"processed {len(results)} incidents ({successes} successful)"
+
+
+def run():
+    return inciweb_chart_data_ingest()
 
 
 REGISTRY = {
