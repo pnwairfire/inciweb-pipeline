@@ -8,6 +8,7 @@ import argparse
 import logging
 import sys
 
+from inciweb_pipeline import events
 from inciweb_pipeline.incident_manager import IncidentManager
 from inciweb_pipeline.payload_generator import PayloadGenerator
 from inciweb_pipeline.db import STATEMENT_TIMEOUT, get_airfire_db_conn
@@ -44,6 +45,7 @@ def generate_payloads(rows):
             results.append({"id": inciweb_id, "status": "success"})
         except Exception as e:
             logger.error(f"Failed to generate payload for id {inciweb_id}: {e}")
+            events.emit("inciweb.incident_payload_failed", id=inciweb_id, reason=str(e))
             results.append(
                 {
                     "id": inciweb_id,
