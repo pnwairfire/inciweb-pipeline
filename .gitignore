@@ -66,6 +66,8 @@ dist-ssr/
 *.tfstate
 *.tfstate.*
 *.tfplan
+*tfplan*
+*.tfplan.json
 *.tfvars
 *.tfvars.json
 !*.tfvars.example

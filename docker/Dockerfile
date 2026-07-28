@@ -10,4 +10,4 @@ COPY pyproject.toml .
 COPY inciweb_pipeline/ inciweb_pipeline/
 RUN uv pip install --system --no-cache .
 
-ENTRYPOINT ["python", "-m", "inciweb_pipeline"]
+CMD ["python", "-m", "inciweb_pipeline"]
