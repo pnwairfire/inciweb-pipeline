@@ -44,6 +44,12 @@ jobs:
       - name: Run Ruff Lint Check
         run: uv run ruff check .
 
+      - name: Lint Dockerfile with Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/Dockerfile
+          failure-threshold: error
+
   # dependency-check:
   #   name: "Dependency Audit"
   #   runs-on: ubuntu-latest
