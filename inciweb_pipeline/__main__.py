@@ -8,9 +8,11 @@ import argparse
 import logging
 import sys
 
+import psycopg2.errors
+from inciweb_pipeline.constants import WIDGET_SCHEMA
+from inciweb_pipeline.db import STATEMENT_TIMEOUT, get_airfire_db_conn
 from inciweb_pipeline.incident_manager import IncidentManager
 from inciweb_pipeline.payload_generator import PayloadGenerator
-from inciweb_pipeline.db import STATEMENT_TIMEOUT, get_airfire_db_conn
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +21,41 @@ def refresh_pm25():
     logger.info("BEGIN Refreshing underlying materialized views")
     airfire_conn = get_airfire_db_conn(STATEMENT_TIMEOUT)
     airfire_curr = airfire_conn.cursor()
-    airfire_curr.execute("SELECT public.refresh_purple_air_hourly_measurements();")
-    airfire_conn.commit()
+
+    queries_to_try = [
+        f"SELECT {WIDGET_SCHEMA}.refresh_device_last_80_hourly_measurements();",
+        "SELECT refresh_device_last_80_hourly_measurements();",
+        f"SELECT {WIDGET_SCHEMA}.refresh_purple_air_hourly_measurements();",
+        "SELECT refresh_purple_air_hourly_measurements();",
+        "SELECT public.refresh_purple_air_hourly_measurements();",
+    ]
+
+    success = False
+    for query in queries_to_try:
+        try:
+            airfire_curr.execute(query)
+            airfire_conn.commit()
+            logger.info(f"Successfully executed refresh via: {query}")
+            success = True
+            break
+        except psycopg2.errors.UndefinedFunction:
+            airfire_conn.rollback()
+            airfire_curr = airfire_conn.cursor()
+            continue
+        except Exception as e:
+            airfire_conn.rollback()
+            airfire_curr = airfire_conn.cursor()
+            logger.warning(f"Error trying query '{query}': {e}")
+            continue
+
     airfire_curr.close()
-    logger.info("Completed refresh")
+    if success:
+        logger.info("Completed refresh")
+    else:
+        logger.warning(
+            "Materialized view refresh function not found in database; "
+            "skipping refresh step and proceeding with incident extraction."
+        )
 
 
 def get_incident_rows() -> list:
@@ -47,7 +80,9 @@ def generate_payloads(rows):
             results.append(
                 {
                     "id": inciweb_id,
-                    "status": "failed to generate data",
+                    "status": (
+                        "failed to generate data -- could be due to no AQ observations"
+                    ),
                 }
             )
     return results
