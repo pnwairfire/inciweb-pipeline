@@ -25,4 +25,4 @@ def init_s3():
 
 
 def inciweb_bucket():
-    return INCIWEB_BUCKET
+    return os.getenv("INCIWEB_BUCKET") or INCIWEB_BUCKET

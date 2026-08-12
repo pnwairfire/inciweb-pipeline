@@ -48,3 +48,26 @@ def test_generate_payloads_success_and_failure():
         "id": "inc_102",
         "status": "failed to generate data -- could be due to no AQ observations",
     }
+
+
+def test_inciweb_chart_data_ingest_zero_success_raises():
+    import pytest
+    from inciweb_pipeline.__main__ import inciweb_chart_data_ingest
+
+    with patch("inciweb_pipeline.__main__.refresh_pm25"), patch(
+        "inciweb_pipeline.__main__.get_incident_rows", return_value=[["inc_1"]]
+    ), patch(
+        "inciweb_pipeline.__main__.generate_payloads",
+        return_value=[{"id": "inc_1", "status": "failed"}],
+    ):
+        with pytest.raises(RuntimeError, match="0 of 1 incidents were successful"):
+            inciweb_chart_data_ingest()
+
+
+def test_inciweb_bucket_dynamic_lookup():
+    import os
+    from inciweb_pipeline.s3 import inciweb_bucket
+
+    with patch.dict(os.environ, {"INCIWEB_BUCKET": "dynamic-inciweb-bucket"}):
+        assert inciweb_bucket() == "dynamic-inciweb-bucket"
+

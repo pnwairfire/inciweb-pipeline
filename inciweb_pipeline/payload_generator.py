@@ -4,9 +4,10 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 
-from inciweb_pipeline.near_me_util import fetch_near_me
 from inciweb_pipeline.aqi_util import count_cat_values, pm25_to_aqi
+from inciweb_pipeline.constants import WIDGET_SCHEMA
 from inciweb_pipeline.db import STATEMENT_TIMEOUT, get_airfire_db_conn
+from inciweb_pipeline.near_me_util import fetch_near_me
 from inciweb_pipeline.s3 import inciweb_bucket, init_s3
 
 
@@ -50,7 +51,6 @@ class PayloadGenerator:
             print("Empty payload generated -- NO INCIDENT INFO PROVIDED")
 
     def generate(self):
-        self._get_last_72_pm25()
         self._get_last_72_pm25_cat()
         self._get_population_data()
         self._get_near_me_data()
@@ -79,7 +79,7 @@ class PayloadGenerator:
 
         for dist in self.distances:
             airfire_curr.execute(
-                "SELECT population_in_box(%s, %s, %s);",
+                f"SELECT {WIDGET_SCHEMA}.population_in_box(%s, %s, %s);",
                 (self.lat, self.lon, (dist * 1.609344)),
             )
             population = airfire_curr.fetchone()[0]
@@ -118,11 +118,12 @@ class PayloadGenerator:
 
         for dist in self.distances:
             airfire_curr.execute(
-                "SELECT aqi_cats_in_box(%s, %s, %s);",
+                f"SELECT {WIDGET_SCHEMA}.aqi_cats_in_box(%s, %s, %s);",
                 (self.lat, self.lon, (dist * 1.609344)),
             )
             results = airfire_curr.fetchall()
             timestamps, values = self._format_last_72_cat_results(results)
+
 
             if not timestamps or not values:
                 self.logger.info(
@@ -196,8 +197,9 @@ class PayloadGenerator:
                 ]
 
     def _set_meta(self):
-        if not self.near_me_data:
+        if self.near_me_data is None:
             raise ValueError("self.near_me_data must be set before trying to set meta")
+
 
         all_aq_units = (
             self.near_me_data.get("purpleAir", [])

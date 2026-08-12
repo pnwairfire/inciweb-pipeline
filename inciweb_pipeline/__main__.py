@@ -93,7 +93,12 @@ def inciweb_chart_data_ingest():
     rows = get_incident_rows()
     results = generate_payloads(rows)
     successes = sum(1 for r in results if r["status"] == "success")
-    return f"processed {len(results)} incidents ({successes} successful)"
+    msg = f"processed {len(results)} incidents ({successes} successful)"
+    if len(results) > 0 and successes == 0:
+        raise RuntimeError(
+            f"Inciweb pipeline failed: 0 of {len(results)} incidents were successful"
+        )
+    return msg
 
 
 def run():

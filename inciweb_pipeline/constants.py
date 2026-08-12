@@ -2,4 +2,4 @@
 
 import os
 
-WIDGET_SCHEMA = os.getenv("WIDGET_SCHEMA", "public")
+WIDGET_SCHEMA = os.getenv("WIDGET_SCHEMA", "inciweb_widget")
