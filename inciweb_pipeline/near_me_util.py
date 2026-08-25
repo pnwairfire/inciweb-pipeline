@@ -14,9 +14,15 @@ NEAR_ME_URL = (
 )
 
 
+_SESSION = requests.Session()
+adapter = requests.adapters.HTTPAdapter(pool_connections=20, pool_maxsize=50)
+_SESSION.mount("http://", adapter)
+_SESSION.mount("https://", adapter)
+
+
 def fetch_near_me(lat, lon, mile):
     try:
-        response = requests.get(
+        response = _SESSION.get(
             NEAR_ME_URL.format(lat=lat, lon=lon, mi=mile), timeout=30
         )
         api_data = response.json()

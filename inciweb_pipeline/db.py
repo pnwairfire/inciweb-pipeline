@@ -4,6 +4,7 @@ import os
 from urllib.parse import quote_plus
 
 import psycopg2
+import psycopg2.pool
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -79,3 +80,18 @@ def airfire_pg_uri(sslmode=None):
 
 def get_airfire_db_conn(options=None):
     return get_conn(AIRFIRE_DB, options)
+
+
+def get_airfire_db_pool(minconn=5, maxconn=20, options=STATEMENT_TIMEOUT):
+    cfg = _get_config(AIRFIRE_DB)
+    return psycopg2.pool.ThreadedConnectionPool(
+        minconn=minconn,
+        maxconn=maxconn,
+        host=cfg["host"],
+        port=cfg["port"],
+        dbname=cfg["database"],
+        user=cfg["user"],
+        password=cfg["password"],
+        options=options,
+    )
+

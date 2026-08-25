@@ -23,6 +23,7 @@ LEFT JOIN LATERAL (
             'lat', round(ST_Y(ST_Transform(b.geom, 4326))::numeric, 4)
         )) FILTER (WHERE LOWER(b.type) LIKE '%prescribed%') AS nearby_rx
     FROM fire_summary.fasm_inciweb b
-    WHERE ST_DWithin(a.geom::geography, b.geom::geography, 100000)
+    WHERE a.geom && ST_Expand(b.geom, 1.0)
+      AND ST_DWithin(a.geom::geography, b.geom::geography, 100000)
       AND a.id != b.id
 ) nearby ON true;

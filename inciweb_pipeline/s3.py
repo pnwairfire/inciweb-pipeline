@@ -12,7 +12,14 @@ AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 INCIWEB_BUCKET = os.getenv("INCIWEB_BUCKET")
 
 
+_S3_CLIENT = None
+
+
 def init_s3():
+    global _S3_CLIENT
+    if _S3_CLIENT is not None:
+        return _S3_CLIENT
+
     endpoint_url = os.getenv("AWS_ENDPOINT_URL")
     kwargs = {}
     if AWS_ACCESS_KEY and AWS_SECRET_ACCESS_KEY:
@@ -21,7 +28,8 @@ def init_s3():
     if endpoint_url:
         kwargs["endpoint_url"] = endpoint_url
 
-    return boto3.client("s3", **kwargs)
+    _S3_CLIENT = boto3.client("s3", **kwargs)
+    return _S3_CLIENT
 
 
 def inciweb_bucket():

@@ -30,9 +30,10 @@ class PayloadGenerator:
     - nearby_rx
     """
 
-    def __init__(self, incident_row=None):
+    def __init__(self, incident_row=None, db_conn=None):
         self.payload = {}
         self.near_me_data = None
+        self.db_conn = db_conn
         self.logger = logging.getLogger(__name__)
 
         if incident_row:
@@ -49,6 +50,17 @@ class PayloadGenerator:
             self._set_payload_distances()
         else:
             print("Empty payload generated -- NO INCIDENT INFO PROVIDED")
+
+    def _get_cursor(self):
+        if self.db_conn:
+            return self.db_conn.cursor(), False
+        conn = get_airfire_db_conn(STATEMENT_TIMEOUT)
+        return conn.cursor(), True
+
+    def _close_cursor(self, curr, owns_conn):
+        curr.close()
+        if owns_conn and curr.connection:
+            curr.connection.close()
 
     def generate(self):
         self._get_last_72_pm25_cat()
@@ -74,69 +86,62 @@ class PayloadGenerator:
         Maybe we should not query the DB everytime for this?
         Easier to re-use last payload?
         """
-        airfire_conn = get_airfire_db_conn(STATEMENT_TIMEOUT)
-        airfire_curr = airfire_conn.cursor()
-
-        for dist in self.distances:
-            airfire_curr.execute(
-                f"SELECT {WIDGET_SCHEMA}.population_in_box(%s, %s, %s);",
-                (self.lat, self.lon, (dist * 1.609344)),
-            )
-            population = airfire_curr.fetchone()[0]
-            self.payload[dist]["population"] = population
-
-        airfire_curr.close()
-        airfire_conn.close()
+        curr, owns_conn = self._get_cursor()
+        try:
+            for dist in self.distances:
+                curr.execute(
+                    f"SELECT {WIDGET_SCHEMA}.population_in_box(%s, %s, %s);",
+                    (self.lat, self.lon, (dist * 1.609344)),
+                )
+                population = curr.fetchone()[0]
+                self.payload[dist]["population"] = population
+        finally:
+            self._close_cursor(curr, owns_conn)
 
     def _get_last_72_pm25(self):
         # range chart
-        airfire_conn = get_airfire_db_conn(STATEMENT_TIMEOUT)
-        airfire_curr = airfire_conn.cursor()
-
-        for dist in self.distances:
-            airfire_curr.execute(
-                "SELECT pm25_values_in_box(%s, %s, %s);",
-                (self.lat, self.lon, (dist * 1.609344)),
-            )
-            results = airfire_curr.fetchall()
-            timestamps, values = self._format_last_72_results(results)
-
-            if not timestamps or not values:
-                self.logger.info(
-                    f"No last 72 for: {self.inciweb_id} at distance: {dist}"
+        curr, owns_conn = self._get_cursor()
+        try:
+            for dist in self.distances:
+                curr.execute(
+                    "SELECT pm25_values_in_box(%s, %s, %s);",
+                    (self.lat, self.lon, (dist * 1.609344)),
                 )
+                results = curr.fetchall()
+                timestamps, values = self._format_last_72_results(results)
 
-            self.payload[dist]["last_72"] = {"timestamps": timestamps, "values": values}
+                if not timestamps or not values:
+                    self.logger.info(
+                        f"No last 72 for: {self.inciweb_id} at distance: {dist}"
+                    )
 
-        airfire_curr.close()
-        airfire_conn.close()
+                self.payload[dist]["last_72"] = {"timestamps": timestamps, "values": values}
+        finally:
+            self._close_cursor(curr, owns_conn)
 
     def _get_last_72_pm25_cat(self):
         # bar chart
-        airfire_conn = get_airfire_db_conn(STATEMENT_TIMEOUT)
-        airfire_curr = airfire_conn.cursor()
-
-        for dist in self.distances:
-            airfire_curr.execute(
-                f"SELECT {WIDGET_SCHEMA}.aqi_cats_in_box(%s, %s, %s);",
-                (self.lat, self.lon, (dist * 1.609344)),
-            )
-            results = airfire_curr.fetchall()
-            timestamps, values = self._format_last_72_cat_results(results)
-
-
-            if not timestamps or not values:
-                self.logger.info(
-                    f"No last 72 CATS for: {self.inciweb_id} at distance: {dist}"
+        curr, owns_conn = self._get_cursor()
+        try:
+            for dist in self.distances:
+                curr.execute(
+                    f"SELECT {WIDGET_SCHEMA}.aqi_cats_in_box(%s, %s, %s);",
+                    (self.lat, self.lon, (dist * 1.609344)),
                 )
+                results = curr.fetchall()
+                timestamps, values = self._format_last_72_cat_results(results)
 
-            self.payload[dist]["last_72_cat"] = {
-                "timestamps": timestamps,
-                "values": values,
-            }
+                if not timestamps or not values:
+                    self.logger.info(
+                        f"No last 72 CATS for: {self.inciweb_id} at distance: {dist}"
+                    )
 
-        airfire_curr.close()
-        airfire_conn.close()
+                self.payload[dist]["last_72_cat"] = {
+                    "timestamps": timestamps,
+                    "values": values,
+                }
+        finally:
+            self._close_cursor(curr, owns_conn)
 
     def _get_near_me_data(self):
         for dist in self.distances:
@@ -207,15 +212,28 @@ class PayloadGenerator:
             + self.near_me_data.get("aqMonitors", [])
         )
 
-        if all_aq_units:
-            dt = datetime.fromisoformat(max(item["utc_ts"] for item in all_aq_units))
+        valid_dts = []
+        for item in all_aq_units:
+            if isinstance(item, dict):
+                ts = item.get("utc_ts")
+                if ts and isinstance(ts, str) and ts != "Invalid Date":
+                    try:
+                        valid_dts.append(datetime.fromisoformat(ts.replace(" ", "T")))
+                    except (ValueError, TypeError):
+                        pass
+
+        if valid_dts:
+            dt = max(valid_dts)
             current_as_of = str(int(dt.timestamp()))
         else:
             current_as_of = ""
 
         # pd.Timestamp is not JSON-serializable; convert to ISO string or None
-        if pd.notna(self.fasm_fire_last_updated):
-            fasm_last_updated = self.fasm_fire_last_updated.isoformat()
+        if pd.notna(self.fasm_fire_last_updated) and self.fasm_fire_last_updated is not None:
+            if hasattr(self.fasm_fire_last_updated, "isoformat"):
+                fasm_last_updated = self.fasm_fire_last_updated.isoformat()
+            else:
+                fasm_last_updated = str(self.fasm_fire_last_updated)
         else:
             fasm_last_updated = None
 

@@ -7,10 +7,11 @@ inciweb-pipeline <stream>
 import argparse
 import logging
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 import psycopg2.errors
 from inciweb_pipeline.constants import WIDGET_SCHEMA
-from inciweb_pipeline.db import STATEMENT_TIMEOUT, get_airfire_db_conn
+from inciweb_pipeline.db import STATEMENT_TIMEOUT, get_airfire_db_conn, get_airfire_db_pool
 from inciweb_pipeline.incident_manager import IncidentManager
 from inciweb_pipeline.payload_generator import PayloadGenerator
 
@@ -66,25 +67,56 @@ def get_incident_rows() -> list:
     return rows
 
 
-def generate_payloads(rows):
-    results = []
-    for row in rows:
+def generate_payloads(rows, max_workers=20):
+    if not rows:
+        return []
+
+    pool = None
+    try:
+        pool = get_airfire_db_pool(minconn=1, maxconn=max_workers)
+    except Exception as e:
+        logger.warning(
+            f"Could not create ThreadedConnectionPool, falling back to direct connections: {e}"
+        )
+
+    def _process_row(row):
         inciweb_id = row[0]
         logger.info(f"TRANSFORMING InciwebID: {inciweb_id}")
+        conn = None
+        if pool:
+            try:
+                conn = pool.getconn()
+            except Exception as e:
+                logger.warning(
+                    f"Error getting connection from pool for id {inciweb_id}: {e}"
+                )
+
         try:
-            pg = PayloadGenerator(row)
+            pg = PayloadGenerator(row, db_conn=conn)
             pg.generate_and_write_to_s3()
-            results.append({"id": inciweb_id, "status": "success"})
+            return {"id": inciweb_id, "status": "success"}
         except Exception as e:
             logger.error(f"Failed to generate payload for id {inciweb_id}: {e}")
-            results.append(
-                {
-                    "id": inciweb_id,
-                    "status": (
-                        "failed to generate data -- could be due to no AQ observations"
-                    ),
-                }
-            )
+            return {
+                "id": inciweb_id,
+                "status": "failed to generate data -- could be due to no AQ observations",
+            }
+        finally:
+            if pool and conn:
+                try:
+                    pool.putconn(conn)
+                except Exception:
+                    pass
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = list(executor.map(_process_row, rows))
+
+    if pool:
+        try:
+            pool.closeall()
+        except Exception:
+            pass
+
     return results
 
 

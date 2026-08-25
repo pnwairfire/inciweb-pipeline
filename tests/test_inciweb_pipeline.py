@@ -33,7 +33,7 @@ def test_get_incident_rows():
 def test_generate_payloads_success_and_failure():
     rows = [["inc_101"], ["inc_102"]]
 
-    def mock_pg_init(row):
+    def mock_pg_init(row, **kwargs):
         mock_pg = MagicMock()
         if row[0] == "inc_102":
             mock_pg.generate_and_write_to_s3.side_effect = Exception("No AQ obs")
@@ -70,4 +70,24 @@ def test_inciweb_bucket_dynamic_lookup():
 
     with patch.dict(os.environ, {"INCIWEB_BUCKET": "dynamic-inciweb-bucket"}):
         assert inciweb_bucket() == "dynamic-inciweb-bucket"
+
+
+def test_set_meta_handles_invalid_date():
+    from inciweb_pipeline.payload_generator import PayloadGenerator
+
+    pg = PayloadGenerator(
+        incident_row=[
+            "inc_test", -120.0, 45.0, 100, True, "WF", [10, 25], "2026-08-22T00:00:00", True, False
+        ]
+    )
+    pg.near_me_data = {
+        "purpleAir": [{"utc_ts": "Invalid Date"}, {"utc_ts": None}],
+        "clarity": [{"utc_ts": "2026-08-22T12:00:00Z"}],
+        "aqMonitors": [{"utc_ts": "malformed_ts"}],
+    }
+    pg._set_meta()
+    assert "meta" in pg.payload
+    # Should use the single valid timestamp (2026-08-22T12:00:00Z)
+    assert pg.payload["meta"]["current_as_of"] != ""
+
 
