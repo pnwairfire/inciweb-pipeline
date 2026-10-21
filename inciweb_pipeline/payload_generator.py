@@ -115,7 +115,10 @@ class PayloadGenerator:
                         f"No last 72 for: {self.inciweb_id} at distance: {dist}"
                     )
 
-                self.payload[dist]["last_72"] = {"timestamps": timestamps, "values": values}
+                self.payload[dist]["last_72"] = {
+                    "timestamps": timestamps,
+                    "values": values,
+                }
         finally:
             self._close_cursor(curr, owns_conn)
 
@@ -205,7 +208,6 @@ class PayloadGenerator:
         if self.near_me_data is None:
             raise ValueError("self.near_me_data must be set before trying to set meta")
 
-
         all_aq_units = (
             self.near_me_data.get("purpleAir", [])
             + self.near_me_data.get("clarity", [])
@@ -229,7 +231,10 @@ class PayloadGenerator:
             current_as_of = ""
 
         # pd.Timestamp is not JSON-serializable; convert to ISO string or None
-        if pd.notna(self.fasm_fire_last_updated) and self.fasm_fire_last_updated is not None:
+        if (
+            pd.notna(self.fasm_fire_last_updated)
+            and self.fasm_fire_last_updated is not None
+        ):
             if hasattr(self.fasm_fire_last_updated, "isoformat"):
                 fasm_last_updated = self.fasm_fire_last_updated.isoformat()
             else:
