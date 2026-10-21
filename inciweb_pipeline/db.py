@@ -94,4 +94,3 @@ def get_airfire_db_pool(minconn=5, maxconn=20, options=STATEMENT_TIMEOUT):
         password=cfg["password"],
         options=options,
     )
-
