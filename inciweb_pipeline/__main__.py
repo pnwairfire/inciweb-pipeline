@@ -11,7 +11,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 import psycopg2.errors
 from inciweb_pipeline.constants import WIDGET_SCHEMA
-from inciweb_pipeline.db import STATEMENT_TIMEOUT, get_airfire_db_conn, get_airfire_db_pool
+from inciweb_pipeline.db import (
+    STATEMENT_TIMEOUT,
+    get_airfire_db_conn,
+    get_airfire_db_pool,
+)
 from inciweb_pipeline.incident_manager import IncidentManager
 from inciweb_pipeline.payload_generator import PayloadGenerator
 

@@ -54,11 +54,13 @@ def test_inciweb_chart_data_ingest_zero_success_raises():
     import pytest
     from inciweb_pipeline.__main__ import inciweb_chart_data_ingest
 
-    with patch("inciweb_pipeline.__main__.refresh_pm25"), patch(
-        "inciweb_pipeline.__main__.get_incident_rows", return_value=[["inc_1"]]
-    ), patch(
-        "inciweb_pipeline.__main__.generate_payloads",
-        return_value=[{"id": "inc_1", "status": "failed"}],
+    with (
+        patch("inciweb_pipeline.__main__.refresh_pm25"),
+        patch("inciweb_pipeline.__main__.get_incident_rows", return_value=[["inc_1"]]),
+        patch(
+            "inciweb_pipeline.__main__.generate_payloads",
+            return_value=[{"id": "inc_1", "status": "failed"}],
+        ),
     ):
         with pytest.raises(RuntimeError, match="0 of 1 incidents were successful"):
             inciweb_chart_data_ingest()
@@ -77,7 +79,16 @@ def test_set_meta_handles_invalid_date():
 
     pg = PayloadGenerator(
         incident_row=[
-            "inc_test", -120.0, 45.0, 100, True, "WF", [10, 25], "2026-08-22T00:00:00", True, False
+            "inc_test",
+            -120.0,
+            45.0,
+            100,
+            True,
+            "WF",
+            [10, 25],
+            "2026-08-22T00:00:00",
+            True,
+            False,
         ]
     )
     pg.near_me_data = {
@@ -89,5 +100,3 @@ def test_set_meta_handles_invalid_date():
     assert "meta" in pg.payload
     # Should use the single valid timestamp (2026-08-22T12:00:00Z)
     assert pg.payload["meta"]["current_as_of"] != ""
-
-
