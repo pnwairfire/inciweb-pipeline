@@ -33,4 +33,24 @@ def init_s3():
 
 
 def inciweb_bucket():
-    return os.getenv("INCIWEB_BUCKET") or INCIWEB_BUCKET
+    raw = (os.getenv("INCIWEB_BUCKET") or INCIWEB_BUCKET or "").strip()
+    return raw.split("/", 1)[0] if "/" in raw else raw
+
+
+def inciweb_s3_target(inciweb_id: str) -> tuple[str, str]:
+    raw_bucket = (os.getenv("INCIWEB_BUCKET") or INCIWEB_BUCKET or "").strip()
+    explicit_prefix = os.getenv("INCIWEB_S3_PREFIX", "").strip().strip("/")
+
+    if "/" in raw_bucket:
+        bucket, bucket_prefix = raw_bucket.split("/", 1)
+        bucket_prefix = bucket_prefix.strip("/")
+    else:
+        bucket, bucket_prefix = raw_bucket, ""
+
+    prefix = explicit_prefix or bucket_prefix
+    key = (
+        f"{prefix}/{inciweb_id}/latest/payload.json"
+        if prefix
+        else f"{inciweb_id}/latest/payload.json"
+    )
+    return bucket, key

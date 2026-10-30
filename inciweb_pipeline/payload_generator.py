@@ -8,7 +8,7 @@ from inciweb_pipeline.aqi_util import count_cat_values, pm25_to_aqi
 from inciweb_pipeline.constants import WIDGET_SCHEMA
 from inciweb_pipeline.db import STATEMENT_TIMEOUT, get_airfire_db_conn
 from inciweb_pipeline.near_me_util import fetch_near_me
-from inciweb_pipeline.s3 import inciweb_bucket, init_s3
+from inciweb_pipeline.s3 import inciweb_s3_target, init_s3
 
 
 class PayloadGenerator:
@@ -58,18 +58,27 @@ class PayloadGenerator:
         return conn.cursor(), True
 
     def _close_cursor(self, curr, owns_conn):
+        conn = getattr(curr, "connection", None)
         curr.close()
-        if owns_conn and curr.connection:
-            curr.connection.close()
+        if conn:
+            if owns_conn:
+                conn.close()
+            elif not getattr(conn, "autocommit", False):
+                try:
+                    conn.commit()
+                except Exception:
+                    pass
 
-    def generate(self):
+    def generate(self, release_conn_callback=None):
         self._get_last_72_pm25_cat()
         self._get_population_data()
+        if release_conn_callback is not None:
+            release_conn_callback()
         self._get_near_me_data()
         self._set_meta()
 
-    def generate_and_write_to_s3(self):
-        self.generate()
+    def generate_and_write_to_s3(self, release_conn_callback=None):
+        self.generate(release_conn_callback=release_conn_callback)
         self._write_to_s3()
 
     def _set_payload_distances(self):
@@ -264,9 +273,10 @@ class PayloadGenerator:
     def _write_to_s3(self):
         expiration_date = datetime.utcnow() + timedelta(days=30)
         s3 = init_s3()
+        bucket, key = inciweb_s3_target(self.inciweb_id)
         s3.put_object(
-            Bucket=inciweb_bucket(),
-            Key=f"{self.inciweb_id}/latest/payload.json",
+            Bucket=bucket,
+            Key=key,
             Body=json.dumps(self.payload),
             Expires=expiration_date,
             ContentType="application/json",

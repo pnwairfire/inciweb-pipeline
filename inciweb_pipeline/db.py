@@ -70,6 +70,7 @@ AIRFIRE_DB = {
 }
 
 STATEMENT_TIMEOUT = "-c statement_timeout=60000"
+REFRESH_TIMEOUT = "-c lock_timeout=15000 -c statement_timeout=120000"
 
 
 def airfire_pg_uri(sslmode=None):

@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 from inciweb_pipeline.__main__ import generate_payloads, get_incident_rows, refresh_pm25
 from inciweb_pipeline.constants import WIDGET_SCHEMA
+from inciweb_pipeline.payload_generator import PayloadGenerator
 
 
 def test_refresh_pm25():
@@ -163,3 +164,120 @@ def test_sql_ddl_files_present():
         "CREATE MATERIALIZED VIEW inciweb_widget.devices_last_80_hourly_measurements"
         in views_sql
     )
+
+
+def test_refresh_pm25_skips_when_skip_mv_refresh_set(monkeypatch):
+    monkeypatch.setenv("SKIP_MV_REFRESH", "true")
+    with patch("inciweb_pipeline.__main__.get_airfire_db_conn") as mock_get_conn:
+        refresh_pm25()
+    mock_get_conn.assert_not_called()
+
+
+def test_generate_payloads_returns_db_conn_to_pool_before_near_me_and_s3():
+    """Verifies DB connection is returned to the pool before HTTP or S3 I/O runs."""
+    events = []
+    mock_pool = MagicMock()
+    mock_conn = MagicMock()
+
+    def getconn():
+        events.append("getconn")
+        return mock_conn
+
+    def putconn(conn):
+        assert conn is mock_conn
+        events.append("putconn")
+
+    mock_pool.getconn.side_effect = getconn
+    mock_pool.putconn.side_effect = putconn
+
+    row = [
+        "inc_lock_test",
+        -120.0,
+        45.0,
+        100,
+        True,
+        "WF",
+        [10],
+        "2026-08-22T00:00:00",
+        True,
+        False,
+    ]
+
+    with (
+        patch("inciweb_pipeline.__main__.get_airfire_db_pool", return_value=mock_pool),
+        patch.object(
+            PayloadGenerator,
+            "_get_last_72_pm25_cat",
+            side_effect=lambda: events.append("db_last_72"),
+        ),
+        patch.object(
+            PayloadGenerator,
+            "_get_population_data",
+            side_effect=lambda: events.append("db_population"),
+        ),
+        patch.object(
+            PayloadGenerator,
+            "_get_near_me_data",
+            side_effect=lambda: events.append("http_near_me"),
+        ),
+        patch.object(
+            PayloadGenerator,
+            "_set_meta",
+            side_effect=lambda: events.append("set_meta"),
+        ),
+        patch.object(
+            PayloadGenerator,
+            "_write_to_s3",
+            side_effect=lambda: events.append("s3_write"),
+        ),
+    ):
+        results = generate_payloads([row], max_workers=1)
+
+    assert results == [{"id": "inc_lock_test", "status": "success"}]
+    assert mock_conn.autocommit is True
+    assert events == [
+        "getconn",
+        "db_last_72",
+        "db_population",
+        "putconn",
+        "http_near_me",
+        "set_meta",
+        "s3_write",
+    ]
+
+
+def test_inciweb_s3_target_supports_prefix_and_bucket_slash_prefix(monkeypatch):
+    from inciweb_pipeline.s3 import inciweb_s3_target
+
+    monkeypatch.setenv("INCIWEB_BUCKET", "airfire-inciweb")
+    monkeypatch.delenv("INCIWEB_S3_PREFIX", raising=False)
+    assert inciweb_s3_target("inc_123") == (
+        "airfire-inciweb",
+        "inc_123/latest/payload.json",
+    )
+
+    monkeypatch.setenv("INCIWEB_S3_PREFIX", "shadow-dev")
+    assert inciweb_s3_target("inc_123") == (
+        "airfire-inciweb",
+        "shadow-dev/inc_123/latest/payload.json",
+    )
+
+    monkeypatch.setenv("INCIWEB_BUCKET", "airfire-inciweb/shadow-dev")
+    monkeypatch.delenv("INCIWEB_S3_PREFIX", raising=False)
+    assert inciweb_s3_target("inc_123") == (
+        "airfire-inciweb",
+        "shadow-dev/inc_123/latest/payload.json",
+    )
+
+
+def test_fetch_near_me_raises_on_http_or_timeout_error():
+    import pytest
+    import requests
+    from inciweb_pipeline.near_me_util import fetch_near_me
+
+    with patch(
+        "inciweb_pipeline.near_me_util._SESSION.get",
+        side_effect=requests.exceptions.ConnectTimeout("Connection timed out"),
+    ):
+        with pytest.raises(requests.exceptions.ConnectTimeout):
+            fetch_near_me(45.0, -120.0, 10)

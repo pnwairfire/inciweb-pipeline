@@ -21,13 +21,15 @@ _SESSION.mount("https://", adapter)
 
 
 def fetch_near_me(lat, lon, mile):
+    base_url = os.getenv("NEAR_ME_BASE_URL") or NEAR_ME_BASE_URL
+    url = (
+        f"{base_url}/fasm/monitor?lat={lat}&lng={lon}"
+        f"&boundingSquareSizeMiles={mile}&verbose=true"
+    )
     try:
-        response = _SESSION.get(
-            NEAR_ME_URL.format(lat=lat, lon=lon, mi=mile), timeout=30
-        )
-        api_data = response.json()
-        return api_data
+        response = _SESSION.get(url, timeout=30)
+        response.raise_for_status()
+        return response.json()
     except Exception as e:
-        logger.error(e)
-        api_data = {}
-        return api_data
+        logger.error("Error fetching near-me data (%s): %s", url, e)
+        raise
