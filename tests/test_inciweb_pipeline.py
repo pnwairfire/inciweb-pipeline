@@ -100,3 +100,66 @@ def test_set_meta_handles_invalid_date():
     assert "meta" in pg.payload
     # Should use the single valid timestamp (2026-08-22T12:00:00Z)
     assert pg.payload["meta"]["current_as_of"] != ""
+
+
+def test_payload_generator_parity_no_dead_last_72_pm25():
+    from inciweb_pipeline.payload_generator import PayloadGenerator
+
+    assert not hasattr(PayloadGenerator, "_get_last_72_pm25")
+    assert not hasattr(PayloadGenerator, "_format_last_72_results")
+
+    mock_conn = MagicMock()
+    mock_curr = MagicMock()
+    mock_conn.cursor.return_value = mock_curr
+    mock_curr.fetchall.return_value = [('("2026-08-22 12:00:00",1,2,0,0,0,0,3)',)]
+    mock_curr.fetchone.return_value = (1500,)
+
+    pg = PayloadGenerator(
+        incident_row=[
+            "inc_parity",
+            -120.0,
+            45.0,
+            100,
+            True,
+            "WF",
+            [10],
+            "2026-08-22T00:00:00",
+            True,
+            False,
+        ],
+        db_conn=mock_conn,
+    )
+
+    near_me_sample = {
+        "purpleAir": [],
+        "clarity": [{"utc_ts": "2026-08-22T12:00:00Z", "aqi": 42}],
+        "aqMonitors": [],
+        "outlooks": [],
+        "fires": [],
+        "fasmFireIncidents": [],
+    }
+    with patch(
+        "inciweb_pipeline.payload_generator.fetch_near_me",
+        return_value=near_me_sample,
+    ):
+        pg.generate()
+
+    assert pg.payload[10]["last_72"] is None
+    assert "last_72_cat" in pg.payload[10]
+    assert pg.payload[10]["last_72_cat"]["values"] == [[1.0, 2.0, 0.0, 0.0, 0.0, 0.0]]
+    assert pg.payload[10]["population"] == 1500
+
+
+def test_sql_ddl_files_present():
+    from inciweb_pipeline.sql_util import read_sql
+
+    functions_sql = read_sql("functions.sql")
+    views_sql = read_sql("views_and_materialized_views.sql")
+
+    assert "inciweb_widget.population_in_box" in functions_sql
+    assert "inciweb_widget.aqi_cats_in_box" in functions_sql
+    assert "inciweb_widget.refresh_device_last_80_hourly_measurements" in functions_sql
+    assert (
+        "CREATE MATERIALIZED VIEW inciweb_widget.devices_last_80_hourly_measurements"
+        in views_sql
+    )
