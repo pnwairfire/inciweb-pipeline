@@ -98,30 +98,6 @@ class PayloadGenerator:
         finally:
             self._close_cursor(curr, owns_conn)
 
-    def _get_last_72_pm25(self):
-        # range chart
-        curr, owns_conn = self._get_cursor()
-        try:
-            for dist in self.distances:
-                curr.execute(
-                    "SELECT pm25_values_in_box(%s, %s, %s);",
-                    (self.lat, self.lon, (dist * 1.609344)),
-                )
-                results = curr.fetchall()
-                timestamps, values = self._format_last_72_results(results)
-
-                if not timestamps or not values:
-                    self.logger.info(
-                        f"No last 72 for: {self.inciweb_id} at distance: {dist}"
-                    )
-
-                self.payload[dist]["last_72"] = {
-                    "timestamps": timestamps,
-                    "values": values,
-                }
-        finally:
-            self._close_cursor(curr, owns_conn)
-
     def _get_last_72_pm25_cat(self):
         # bar chart
         curr, owns_conn = self._get_cursor()
@@ -252,37 +228,6 @@ class PayloadGenerator:
             "nearby_wildfire": self.nearby_wildfire,
             "nearby_rx": self.nearby_rx,
         }
-
-    def _format_last_72_results(self, results):
-        timestamps = []
-        values = []
-
-        for row in results:
-            try:
-                # Extract the string from the tuple and remove parentheses
-                data_string = row[0].strip("()")
-
-                # Split by comma and clean up quotes
-                parts = [part.strip(' "') for part in data_string.split(",")]
-
-                timestamp_str = parts[0]
-                max_val = float(parts[1]) if parts[1] else None
-                min_val = float(parts[2]) if parts[2] else None
-                avg_val = float(parts[3]) if parts[3] else None
-
-                # Convert timestamp string to Unix timestamp (seconds)
-                dt = datetime.fromisoformat(
-                    timestamp_str.replace(" ", "T") + "+00:00"
-                )  # Assume UTC
-                unix_timestamp = int(dt.timestamp())
-
-                timestamps.append(unix_timestamp)
-                values.append([max_val, min_val, avg_val])
-            except Exception as e:
-                self.logger.error(e)
-                self.logger.error(f"failed on {row}")
-
-        return timestamps, values
 
     def _format_last_72_cat_results(self, results):
         timestamps = []
