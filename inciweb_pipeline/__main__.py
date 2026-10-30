@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 import psycopg2.errors
 from inciweb_pipeline.constants import WIDGET_SCHEMA
 from inciweb_pipeline.db import (
-    STATEMENT_TIMEOUT,
+    REFRESH_TIMEOUT,
     get_airfire_db_conn,
     get_airfire_db_pool,
 )
@@ -29,7 +29,7 @@ def refresh_pm25():
         return
 
     logger.info("BEGIN Refreshing underlying materialized views")
-    airfire_conn = get_airfire_db_conn(STATEMENT_TIMEOUT)
+    airfire_conn = get_airfire_db_conn(REFRESH_TIMEOUT)
     airfire_curr = airfire_conn.cursor()
 
     queries_to_try = [
@@ -121,10 +121,7 @@ def generate_payloads(rows, max_workers=20):
 
         try:
             pg = PayloadGenerator(row, db_conn=conn)
-            try:
-                pg.generate_and_write_to_s3(release_conn_callback=_release_conn)
-            except TypeError:
-                pg.generate_and_write_to_s3()
+            pg.generate_and_write_to_s3(release_conn_callback=_release_conn)
             return {"id": inciweb_id, "status": "success"}
         except Exception as e:
             logger.error(f"Failed to generate payload for id {inciweb_id}: {e}")
