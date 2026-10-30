@@ -6,13 +6,14 @@ inciweb-pipeline <stream>
 
 import argparse
 import logging
+import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
 import psycopg2.errors
 from inciweb_pipeline.constants import WIDGET_SCHEMA
 from inciweb_pipeline.db import (
-    STATEMENT_TIMEOUT,
+    REFRESH_TIMEOUT,
     get_airfire_db_conn,
     get_airfire_db_pool,
 )
@@ -23,8 +24,12 @@ logger = logging.getLogger(__name__)
 
 
 def refresh_pm25():
+    if os.getenv("SKIP_MV_REFRESH", "").strip().lower() in ("1", "true", "yes"):
+        logger.info("SKIP_MV_REFRESH is enabled; skipping materialized view refresh.")
+        return
+
     logger.info("BEGIN Refreshing underlying materialized views")
-    airfire_conn = get_airfire_db_conn(STATEMENT_TIMEOUT)
+    airfire_conn = get_airfire_db_conn(REFRESH_TIMEOUT)
     airfire_curr = airfire_conn.cursor()
 
     queries_to_try = [
@@ -36,24 +41,27 @@ def refresh_pm25():
     ]
 
     success = False
-    for query in queries_to_try:
-        try:
-            airfire_curr.execute(query)
-            airfire_conn.commit()
-            logger.info(f"Successfully executed refresh via: {query}")
-            success = True
-            break
-        except psycopg2.errors.UndefinedFunction:
-            airfire_conn.rollback()
-            airfire_curr = airfire_conn.cursor()
-            continue
-        except Exception as e:
-            airfire_conn.rollback()
-            airfire_curr = airfire_conn.cursor()
-            logger.warning(f"Error trying query '{query}': {e}")
-            continue
+    try:
+        for query in queries_to_try:
+            try:
+                airfire_curr.execute(query)
+                airfire_conn.commit()
+                logger.info(f"Successfully executed refresh via: {query}")
+                success = True
+                break
+            except psycopg2.errors.UndefinedFunction:
+                airfire_conn.rollback()
+                airfire_curr = airfire_conn.cursor()
+                continue
+            except Exception as e:
+                airfire_conn.rollback()
+                airfire_curr = airfire_conn.cursor()
+                logger.warning(f"Error trying query '{query}': {e}")
+                continue
+    finally:
+        airfire_curr.close()
+        airfire_conn.close()
 
-    airfire_curr.close()
     if success:
         logger.info("Completed refresh")
     else:
@@ -90,14 +98,30 @@ def generate_payloads(rows, max_workers=20):
         if pool:
             try:
                 conn = pool.getconn()
+                conn.autocommit = True
             except Exception as e:
                 logger.warning(
                     f"Error getting connection from pool for id {inciweb_id}: {e}"
                 )
 
+        pg = None
+        released = False
+
+        def _release_conn():
+            nonlocal conn, released
+            if pg is not None:
+                pg.db_conn = None
+            if not released and pool and conn:
+                released = True
+                try:
+                    pool.putconn(conn)
+                except Exception:
+                    pass
+                conn = None
+
         try:
             pg = PayloadGenerator(row, db_conn=conn)
-            pg.generate_and_write_to_s3()
+            pg.generate_and_write_to_s3(release_conn_callback=_release_conn)
             return {"id": inciweb_id, "status": "success"}
         except Exception as e:
             logger.error(f"Failed to generate payload for id {inciweb_id}: {e}")
@@ -106,11 +130,7 @@ def generate_payloads(rows, max_workers=20):
                 "status": "failed to generate data -- could be due to no AQ observations",
             }
         finally:
-            if pool and conn:
-                try:
-                    pool.putconn(conn)
-                except Exception:
-                    pass
+            _release_conn()
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         results = list(executor.map(_process_row, rows))
